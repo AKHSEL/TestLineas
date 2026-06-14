@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\axel_\\\\OneDrive\\\\Escritorio\\\\repo\\\\test-de-lineas\" -Recurse)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(node -e \"const p=require\\('./node_modules/next/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "WebFetch(domain:docs.google.com)",
+      "WebFetch(domain:doc-14-bc-sheets.googleusercontent.com)"
+    ]
+  }
+}
