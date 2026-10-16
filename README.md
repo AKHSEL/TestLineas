@@ -2,6 +2,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Before starting the application, apply the SQL files to the Supabase project:
+
+- New project: run `supabase/schema.sql`.
+- Existing project: apply the pending files in `supabase/migrations/` before deploying this version.
+
+The migration preserves existing evaluations, assigns them to the only doctor account that has signed in, and leaves them without a patient so they can be linked manually from the dashboard. It aborts without changing data when that owner cannot be identified unambiguously. Its additive columns and compatibility defaults also allow the previous application version to keep running during deployment; the new API is what requires every newly generated link to select a patient.
+
 First, run the development server:
 
 ```bash
