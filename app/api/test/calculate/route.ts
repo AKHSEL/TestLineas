@@ -28,16 +28,23 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Faltan los tiempos de respuesta por estímulo' }, { status: 400 })
   }
 
-  const result = calculateResult(
-    rankings,
-    userData as UserData,
-    typeof timeSeconds === 'number' ? timeSeconds : undefined,
-  )
-
   const totalSeconds = typeof timeSeconds === 'number' && Number.isFinite(timeSeconds) && timeSeconds >= 0 ? Math.round(timeSeconds) : 0
   const averageSeconds = (firstResponseTimes as number[]).reduce((sum, value) => sum + value, 0) / 9
   const supabase = createSupabasePublicClient()
   if (!supabase) return Response.json({ error: 'Supabase no está configurado' }, { status: 503 })
+
+  // El reloj de la base registra la confirmación antes de calcular el resultado.
+  const { error: confirmationError } = await supabase.rpc('record_test_confirmation', { p_token: token })
+  if (confirmationError) {
+    return Response.json({ error: confirmationError.message.includes('LINK_INVALID') || confirmationError.message.includes('CONSENT_REQUIRED')
+      ? 'El enlace o el consentimiento ya no está disponible'
+      : 'No se pudo registrar la confirmación final. Intenta nuevamente.' }, { status: 400 })
+  }
+
+  const result = {
+    ...calculateResult(rankings, userData as UserData, typeof timeSeconds === 'number' ? timeSeconds : undefined),
+    thesis: { totalExecutionSeconds: totalSeconds, firstResponseTimes, averageResponseSeconds: averageSeconds },
+  }
 
   const { error } = await supabase.rpc('complete_evaluation', {
     p_token: token,
@@ -52,5 +59,5 @@ export async function POST(req: NextRequest) {
     p_average_response_seconds: averageSeconds,
   })
   if (error) return Response.json({ error: error.message === 'LINK_INVALID' ? 'El enlace ya no está disponible' : error.message }, { status: 400 })
-  return Response.json({ ...result, thesis: { totalExecutionSeconds: totalSeconds, firstResponseTimes, averageResponseSeconds: averageSeconds } })
+  return Response.json(result)
 }

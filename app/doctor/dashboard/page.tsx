@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClinicalHeader, StatusAlert } from "@/app/components/clinical-ui";
-import { DoctorTabs } from "@/app/doctor/_components/doctor-tabs";
-import { EmptyState, LoadingRows, Patient, PatientList } from "@/app/doctor/_components/patient-directory";
+import { DoctorWorkspace } from "@/app/doctor/_components/doctor-tabs";
+import { Patient, PatientList } from "@/app/doctor/_components/patient-directory";
 import { downloadExcelFile, type ExcelColumn } from "@/lib/excel-export";
-import { DOCUMENT_TYPE_LABELS, maskDocument } from "@/lib/patients";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Evaluation = { id: string; patient_id: string | null; nombre: string; apellido: string; edad: string; sexo: string; estado_civil: string; ocupacion: string; estudios: string; convivientes: string; rankings: Record<string, number>; result: Record<string, unknown>; started_at: string; finished_at: string; total_execution_seconds: number; first_response_times: number[]; average_response_seconds: number; created_at: string };
@@ -43,9 +42,7 @@ export default function DoctorDashboard() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
-  const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [assigningId, setAssigningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -64,23 +61,14 @@ export default function DoctorDashboard() {
   }, [router]);
 
   useEffect(() => { void loadData(); }, [loadData]);
-  const pending = useMemo(() => evaluations.filter((evaluation) => !evaluation.patient_id), [evaluations]);
-  async function assignEvaluation(evaluation: Evaluation) {
-    const patientId = assignments[evaluation.id];
-    if (!patientId || !window.confirm(`¿Asignar la evaluación de ${evaluation.nombre} ${evaluation.apellido} a la ficha seleccionada?`)) return;
-    setAssigningId(evaluation.id); setError(null);
-    try { const response = await fetch(`/api/doctor/evaluations/${evaluation.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientId }) }); const data = await readJson<ApiError>(response); if (!response.ok) throw new Error(data?.error || "No se pudo asignar la evaluación."); await loadData(); }
-    catch (assignError) { setError(assignError instanceof Error ? assignError.message : "No se pudo asignar la evaluación."); } finally { setAssigningId(null); }
-  }
   async function logout() { await createSupabaseBrowserClient()?.auth.signOut(); router.replace("/doctor"); }
 
-  return <div className="min-h-screen bg-surface"><ClinicalHeader compact right={<button onClick={logout} className="button-quiet">Cerrar sesión</button>} /><DoctorTabs /><main className="mx-auto max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
-    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="eyebrow">Área profesional</p><h1 className="mt-2 text-3xl font-semibold sm:text-4xl">Panel clínico</h1><p className="mt-2 text-sm text-on-surface-variant">Resumen de pacientes y evaluaciones pendientes.</p></div>{!loading && <div className="flex flex-wrap gap-5"><Stat label="Pacientes" value={patients.length} /><Stat label="Evaluaciones" value={evaluations.length} /><Stat label="Sin asignar" value={pending.length} /></div>}</header>
+  return <div className="min-h-screen bg-surface"><ClinicalHeader compact right={<button onClick={logout} className="button-quiet">Cerrar sesión</button>} /><DoctorWorkspace><main className="mx-auto w-full min-w-0 max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="eyebrow">Área profesional</p><h1 className="mt-2 text-3xl font-semibold sm:text-4xl">Panel clínico</h1><p className="mt-2 text-sm text-on-surface-variant">Resumen de pacientes y evaluaciones.</p></div>{!loading && <div className="flex flex-wrap gap-5"><Stat label="Pacientes" value={patients.length} /><Stat label="Evaluaciones" value={evaluations.length} /></div>}</header>
     {error && <StatusAlert>{error} <button type="button" onClick={loadData} className="ml-1 font-bold underline">Reintentar</button></StatusAlert>}
     <section className="clinical-card overflow-hidden" aria-labelledby="recent-patients-title"><div className="flex flex-col gap-3 border-b border-outline-variant/25 px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6"><div><p className="eyebrow">Seguimiento</p><h2 id="recent-patients-title" className="mt-1 text-xl font-bold">Pacientes recientes</h2><p className="mt-1 text-sm text-on-surface-variant">Accede rápidamente a las últimas fichas actualizadas.</p></div><Link href="/doctor/patients" className="button-secondary">Ver todos los pacientes</Link></div><PatientList patients={patients} loading={loading} preview /></section>
-    <section id="pending-title" className="clinical-card scroll-mt-6 overflow-hidden" aria-labelledby="pending-title-heading"><div className="border-b border-outline-variant/25 px-5 py-5 sm:px-6"><p className="eyebrow">Migración segura</p><h2 id="pending-title-heading" className="mt-1 text-xl font-bold">Evaluaciones sin asignar</h2><p className="mt-1 text-sm text-on-surface-variant">Vincula manualmente los registros anteriores para evitar mezclar personas por nombre.</p></div>{loading ? <LoadingRows /> : pending.length === 0 ? <EmptyState title="Todo está organizado" copy="No hay evaluaciones pendientes de asignación." /> : <div className="divide-y divide-outline-variant/25">{pending.map((evaluation) => <article key={evaluation.id} className="grid gap-4 px-5 py-4 lg:grid-cols-[1fr_260px_auto] lg:items-center lg:px-6"><div><h3 className="font-bold">{evaluation.nombre} {evaluation.apellido}</h3><p className="mt-1 text-xs text-on-surface-variant">{new Date(evaluation.created_at).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })} · {evaluation.edad} años</p></div><select value={assignments[evaluation.id] ?? ""} onChange={(event) => setAssignments((current) => ({ ...current, [evaluation.id]: event.target.value }))} className="clinical-input" aria-label={`Paciente para ${evaluation.nombre} ${evaluation.apellido}`}><option value="">Seleccionar paciente</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.apellido}, {patient.nombre}{patient.document_type ? ` · ${DOCUMENT_TYPE_LABELS[patient.document_type]} ${maskDocument(patient.document_number)}` : ""}</option>)}</select><button type="button" disabled={!assignments[evaluation.id] || assigningId === evaluation.id} onClick={() => assignEvaluation(evaluation)} className="button-secondary">{assigningId === evaluation.id ? "Asignando…" : "Asignar"}</button></article>)}</div>}</section>
     <div className="flex justify-end"><button disabled={!evaluations.length} onClick={() => { void downloadExcel(evaluations).catch(() => setError("No se pudo exportar el historial en Excel.")); }} className="button-secondary">Exportar historial completo</button></div>
-  </main></div>;
+  </main></DoctorWorkspace></div>;
 }
 
 function Stat({ label, value }: { label: string; value: number }) { return <div className="min-w-24 border-l border-outline-variant pl-4"><span className="block text-xs text-on-surface-variant">{label}</span><span className="mt-1 block text-2xl font-semibold text-on-surface">{value}</span></div>; }

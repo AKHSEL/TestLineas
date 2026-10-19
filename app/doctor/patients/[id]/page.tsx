@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ClinicalHeader, StatusAlert } from "@/app/components/clinical-ui";
-import { DoctorTabs } from "@/app/doctor/_components/doctor-tabs";
+import { DoctorWorkspace } from "@/app/doctor/_components/doctor-tabs";
 import { ScanTestModal } from "@/app/doctor/_components/scan-test-modal";
 import { downloadExcelFile, type ExcelColumn } from "@/lib/excel-export";
 import { DOCUMENT_TYPE_LABELS, DocumentType, maskDocument } from "@/lib/patients";
@@ -218,8 +218,8 @@ export default function PatientDetailPage() {
   return (
     <div className="min-h-screen bg-surface">
       <ClinicalHeader compact right={<Link href="/doctor/patients" className="button-quiet">Volver a pacientes</Link>} />
-      <DoctorTabs />
-      <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+      <DoctorWorkspace>
+      <main className="mx-auto w-full min-w-0 max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div><p className="eyebrow">Ficha longitudinal</p><h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">{patient.nombre} {patient.apellido}</h1><p className="mt-2 text-sm text-on-surface-variant">{patient.document_type ? `${DOCUMENT_TYPE_LABELS[patient.document_type]} ${maskDocument(patient.document_number)} · ` : "Sin documento · "}{evaluations.length} {evaluations.length === 1 ? "evaluación registrada" : "evaluaciones registradas"}</p></div>
           <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setEditing((current) => !current)} className="button-secondary">{editing ? "Cancelar edición" : "Editar datos"}</button><button onClick={() => { void exportPatient(patient).catch(() => setError("No se pudo exportar la evolución en Excel.")); }} disabled={!evaluations.length} className="button-secondary">Exportar evolución</button><ScanTestModal patientId={id} onSaved={loadPatient} /><button onClick={createLink} disabled={creatingLink} className="button-primary">{creatingLink ? "Generando…" : "Nueva evaluación"}</button></div>
@@ -289,6 +289,7 @@ export default function PatientDetailPage() {
           </>
         )}
       </main>
+      </DoctorWorkspace>
     </div>
   );
 }

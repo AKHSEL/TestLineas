@@ -3,6 +3,7 @@ export type ExcelColumn = {
   label: string;
   width: number;
   kind?: "integer" | "decimal" | "text";
+  numFmt?: string;
   wrap?: boolean;
 };
 
@@ -63,7 +64,7 @@ export async function buildExcelWorkbook({ columns, rows, sheetName, frozenColum
       };
       cell.border = { bottom: { style: "hair", color: { argb: COLORS.border } } };
       if (column.kind === "integer") cell.numFmt = "#,##0";
-      if (column.kind === "decimal") cell.numFmt = "#,##0.00";
+      if (column.kind === "decimal") cell.numFmt = column.numFmt ?? "#,##0.00";
       if (column.kind === "text") cell.numFmt = "@";
     });
   }

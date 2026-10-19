@@ -14,6 +14,9 @@ function HomeContent() {
   const [linkedPatient, setLinkedPatient] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [consentSaving, setConsentSaving] = useState(false);
+  const [consentRecorded, setConsentRecorded] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [edad, setEdad] = useState("");
@@ -50,9 +53,41 @@ function HomeContent() {
   }, [token]);
 
   function continueToDetails() {
-    if (consentAccepted) {
+    if (consentAccepted && consentRecorded && !consentSaving) {
       setStep(2);
       window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  async function handleConsentChange(checked: boolean) {
+    setConsentAccepted(checked);
+    setConsentRecorded(false);
+    setConsentError(null);
+    if (!checked) {
+      sessionStorage.removeItem("consentStartedAt");
+      sessionStorage.removeItem("consentToken");
+      return;
+    }
+
+    setConsentSaving(true);
+    try {
+      const response = await fetch("/api/test/consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await response.json() as { consentStartedAt?: string; error?: string };
+      if (!response.ok || !data.consentStartedAt) {
+        throw new Error(data.error ?? "No se pudo registrar el consentimiento.");
+      }
+      sessionStorage.setItem("consentStartedAt", data.consentStartedAt);
+      sessionStorage.setItem("consentToken", token!);
+      setConsentRecorded(true);
+    } catch (error) {
+      setConsentAccepted(false);
+      setConsentError(error instanceof Error ? error.message : "No se pudo registrar el consentimiento.");
+    } finally {
+      setConsentSaving(false);
     }
   }
 
@@ -145,11 +180,12 @@ function HomeContent() {
               )}
 
               <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-outline-variant/45 p-4 text-sm leading-6 hover:bg-surface-container-low/50">
-                <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-primary" />
+                <input type="checkbox" checked={consentAccepted} disabled={consentSaving} onChange={(event) => { void handleConsentChange(event.target.checked); }} className="mt-1 h-5 w-5 shrink-0 accent-primary" />
                 <span>He leído la información y acepto realizar esta evaluación y enviar mis respuestas al profesional responsable.</span>
               </label>
 
-              <button type="button" onClick={continueToDetails} disabled={!consentAccepted} className="button-primary w-full sm:ml-auto sm:w-auto sm:min-w-40">Continuar</button>
+              {consentError && <StatusAlert>{consentError}</StatusAlert>}
+              <button type="button" onClick={continueToDetails} disabled={!consentAccepted || !consentRecorded || consentSaving} className="button-primary w-full sm:ml-auto sm:w-auto sm:min-w-40">{consentSaving ? "Registrando…" : "Continuar"}</button>
             </div>
           </section>
         ) : (
