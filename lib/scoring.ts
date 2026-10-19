@@ -17,7 +17,8 @@ export const IMAGE_ID_TO_AZ: Record<number, AZCode> = {
 
 // slots: index = rank-1 (slot 0 = rank 1 = most preferred), value = imageId
 export function slotsToRankings(slots: (number | null)[]): Rankings | null {
-  if (slots.some((s) => s === null)) return null
+  if (slots.length !== 9 || slots.some((s) => s === null || !Number.isInteger(s) || !(s! in IMAGE_ID_TO_AZ))) return null
+  if (new Set(slots).size !== 9) return null
   const r = {} as Rankings
   slots.forEach((id, i) => {
     r[IMAGE_ID_TO_AZ[id!]] = i + 1
