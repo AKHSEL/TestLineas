@@ -27,6 +27,7 @@ create table if not exists public.evaluation_links (
   token uuid not null unique default gen_random_uuid(),
   doctor_id uuid not null default auth.uid() references auth.users(id) on delete restrict,
   patient_id uuid references public.patients(id) on delete restrict,
+  registration_required boolean not null default false,
   status text not null default 'available' check (status in ('available', 'completed', 'expired')),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '24 hours'),
@@ -156,6 +157,41 @@ language sql security definer set search_path = '' as $$
   limit 1
 $$;
 
+create or replace function public.register_invited_patient(
+  p_token uuid, p_nombre text, p_apellido text, p_document_type text, p_document_number text
+) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare
+  l_link public.evaluation_links;
+  l_patient_id uuid;
+  l_nombre text := btrim(regexp_replace(coalesce(p_nombre, ''), '[[:space:]]+', ' ', 'g'));
+  l_apellido text := btrim(regexp_replace(coalesce(p_apellido, ''), '[[:space:]]+', ' ', 'g'));
+  l_type text := lower(btrim(coalesce(p_document_type, '')));
+  l_number text := upper(regexp_replace(coalesce(p_document_number, ''), '[^A-Za-z0-9]', '', 'g'));
+begin
+  select * into l_link from public.evaluation_links
+  where token = p_token and status = 'available' and expires_at > now() for update;
+  if not found or not l_link.registration_required then raise exception 'LINK_INVALID'; end if;
+  if l_link.patient_id is not null then return l_link.patient_id; end if;
+  if l_link.consent_started_at is null then raise exception 'CONSENT_REQUIRED'; end if;
+  if char_length(l_nombre) not between 1 and 80
+     or char_length(l_apellido) not between 1 and 80
+     or l_type not in ('dni', 'ce', 'passport')
+     or (l_type = 'dni' and l_number !~ '^[0-9]{8}$')
+     or (l_type <> 'dni' and l_number !~ '^[A-Z0-9]{6,15}$') then
+    raise exception 'PATIENT_INVALID';
+  end if;
+  begin
+    insert into public.patients(doctor_id, nombre, apellido, document_type, document_number)
+    values (l_link.doctor_id, l_nombre, l_apellido, l_type, l_number)
+    returning id into l_patient_id;
+  exception when unique_violation then
+    raise exception 'DOCUMENT_EXISTS';
+  end;
+  update public.evaluation_links set patient_id = l_patient_id where id = l_link.id;
+  return l_patient_id;
+end; $$;
+
 create or replace function public.assign_evaluation_to_patient(p_evaluation_id uuid, p_patient_id uuid)
 returns void
 language plpgsql security invoker set search_path = '' as $$
@@ -210,6 +246,7 @@ begin
   select * into l_link from public.evaluation_links
   where token = p_token and status = 'available' and expires_at > now() for update;
   if not found then raise exception 'LINK_INVALID'; end if;
+  if l_link.registration_required and l_link.patient_id is null then raise exception 'REGISTRATION_REQUIRED'; end if;
   l_result := p_result;
   if l_link.consent_started_at is not null then
     if l_link.response_confirmed_at is null then raise exception 'CONFIRMATION_REQUIRED'; end if;
@@ -240,6 +277,8 @@ end; $$;
 
 revoke execute on function public.get_evaluation_session(uuid) from public, anon, authenticated;
 grant execute on function public.get_evaluation_session(uuid) to anon;
+revoke execute on function public.register_invited_patient(uuid, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.register_invited_patient(uuid, text, text, text, text) to anon;
 revoke execute on function public.assign_evaluation_to_patient(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.assign_evaluation_to_patient(uuid, uuid) to authenticated;
 revoke execute on function public.record_test_consent(uuid) from public, anon, authenticated;

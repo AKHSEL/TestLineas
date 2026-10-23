@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BrandMark, ClinicalHeader, PageFooter, StatusAlert, StepIndicator } from "@/app/components/clinical-ui";
+import { DOCUMENT_TYPE_LABELS, parsePatientDocument, type DocumentType } from "@/lib/patients";
 
-type FieldErrors = Partial<Record<"nombre" | "apellido" | "edad", string>>;
+type FieldErrors = Partial<Record<"nombre" | "apellido" | "documento" | "edad", string>>;
 
 function HomeContent() {
   const router = useRouter();
@@ -19,6 +20,10 @@ function HomeContent() {
   const [consentError, setConsentError] = useState<string | null>(null);
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
+  const [documentType, setDocumentType] = useState<DocumentType>("dni");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [registering, setRegistering] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [edad, setEdad] = useState("");
   const [sexo, setSexo] = useState("Masculino");
   const [estadoCivil, setEstadoCivil] = useState("Soltero/a");
@@ -91,11 +96,18 @@ function HomeContent() {
     }
   }
 
-  function handleComenzar(event: React.FormEvent<HTMLFormElement>) {
+  async function handleComenzar(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (registering) return;
+    setRegistrationError(null);
     const nextErrors: FieldErrors = {};
     if (!nombre.trim()) nextErrors.nombre = "Ingresa tu nombre.";
     if (!apellido.trim()) nextErrors.apellido = "Ingresa tu apellido.";
+    if (!linkedPatient) {
+      const document = parsePatientDocument(documentType, documentNumber);
+      if (!document.ok) nextErrors.documento = document.error;
+      else if (!document.documentNumber) nextErrors.documento = "Ingresa tu documento.";
+    }
     const numericAge = Number(edad);
     if (!edad.trim() || !Number.isFinite(numericAge) || numericAge < 1 || numericAge > 120) {
       nextErrors.edad = "Ingresa una edad entre 1 y 120 años.";
@@ -106,6 +118,25 @@ function HomeContent() {
     if (firstError) {
       window.setTimeout(() => document.getElementById(firstError)?.focus(), 0);
       return;
+    }
+
+    if (!linkedPatient) {
+      setRegistering(true);
+      try {
+        const response = await fetch("/api/test/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, nombre, apellido, document_type: documentType, document_number: documentNumber }),
+        });
+        const data = await response.json().catch(() => null) as { error?: string } | null;
+        if (!response.ok) throw new Error(data?.error || "No se pudo crear la ficha.");
+        setLinkedPatient(true);
+      } catch (error) {
+        setRegistrationError(error instanceof Error ? error.message : "No se pudo crear la ficha.");
+        setRegistering(false);
+        return;
+      }
+      setRegistering(false);
     }
 
     sessionStorage.setItem("userData", JSON.stringify({
@@ -168,7 +199,7 @@ function HomeContent() {
               </div>
 
               <StatusAlert tone="info">
-                Los datos que ingreses y tus respuestas serán enviados a <strong>{doctorName}</strong> para su revisión profesional. Los resultados no se mostrarán en este dispositivo.
+                {linkedPatient ? <>Los datos que ingreses y tus respuestas serán enviados a <strong>{doctorName}</strong> para su revisión profesional.</> : <>Tus datos personales, incluido tu documento, y tus respuestas serán enviados a <strong>{doctorName}</strong> para crear tu ficha y revisar la evaluación.</>} Los resultados no se mostrarán en este dispositivo.
               </StatusAlert>
 
               {(doctorEmail || doctorPhone) && (
@@ -211,6 +242,19 @@ function HomeContent() {
                     <input id="apellido" className="clinical-input read-only:bg-surface-container-low" autoComplete="family-name" value={apellido} readOnly={linkedPatient} onChange={(event) => setApellido(event.target.value)} aria-invalid={Boolean(errors.apellido)} aria-describedby={errors.apellido ? "apellido-error" : undefined} />
                     {errors.apellido && <p id="apellido-error" className="mt-1.5 text-xs font-medium text-error">{errors.apellido}</p>}
                   </div>
+                  {!linkedPatient && <>
+                    <div>
+                      <label htmlFor="documentType" className="clinical-label">Tipo de documento <span className="text-error">*</span></label>
+                      <select id="documentType" className="clinical-input" value={documentType} onChange={(event) => setDocumentType(event.target.value as DocumentType)}>
+                        <option value="dni">{DOCUMENT_TYPE_LABELS.dni}</option><option value="ce">{DOCUMENT_TYPE_LABELS.ce}</option><option value="passport">{DOCUMENT_TYPE_LABELS.passport}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="documento" className="clinical-label">Número de documento <span className="text-error">*</span></label>
+                      <input id="documento" className="clinical-input" inputMode={documentType === "dni" ? "numeric" : "text"} autoComplete="off" maxLength={18} value={documentNumber} onChange={(event) => setDocumentNumber(event.target.value)} aria-invalid={Boolean(errors.documento)} aria-describedby={errors.documento ? "documento-error" : undefined} />
+                      {errors.documento && <p id="documento-error" className="mt-1.5 text-xs font-medium text-error">{errors.documento}</p>}
+                    </div>
+                  </>}
                   <div>
                     <label htmlFor="edad" className="clinical-label">Edad <span className="text-error">*</span></label>
                     <input id="edad" className="clinical-input" inputMode="numeric" type="number" min={1} max={120} value={edad} onChange={(event) => setEdad(event.target.value)} aria-invalid={Boolean(errors.edad)} aria-describedby={errors.edad ? "edad-error" : undefined} />
@@ -250,9 +294,10 @@ function HomeContent() {
                 </div>
               </fieldset>
 
+              {registrationError && <StatusAlert>{registrationError}</StatusAlert>}
               <div className="flex flex-col-reverse gap-3 border-t border-outline-variant/25 pt-6 sm:flex-row sm:items-center sm:justify-between">
                 <button type="button" onClick={() => setStep(1)} className="button-quiet">Volver</button>
-                <button type="submit" className="button-primary sm:min-w-48">Comenzar evaluación <span aria-hidden="true">→</span></button>
+                <button type="submit" disabled={registering} className="button-primary sm:min-w-48">{registering ? "Registrando…" : "Comenzar evaluación →"}</button>
               </div>
             </form>
           </section>

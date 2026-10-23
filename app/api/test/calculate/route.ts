@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
     p_first_response_times: firstResponseTimes,
     p_average_response_seconds: averageSeconds,
   })
-  if (error) return Response.json({ error: error.message === 'LINK_INVALID' ? 'El enlace ya no está disponible' : error.message }, { status: 400 })
+  if (error) return Response.json({ error: error.message.includes('REGISTRATION_REQUIRED')
+    ? 'Completa tus datos personales antes de enviar la prueba.'
+    : error.message.includes('LINK_INVALID') ? 'El enlace ya no está disponible' : error.message }, { status: 400 })
   return Response.json(result)
 }
