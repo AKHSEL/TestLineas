@@ -2,6 +2,8 @@
 
 El propietario administra las licencias en `/owner` con una cuenta de Supabase Auth incluida en `public.license_owners`. Los profesionales usan `/doctor`; su cuenta no puede leer ni modificar las licencias de otros usuarios.
 
+En el menú lateral de `/doctor`, el botón **Licencia** muestra estado, vencimiento y contacto del proveedor. Por ahora toma nombre, correo y teléfono de `NEXT_PUBLIC_DOCTOR_NAME`, `NEXT_PUBLIC_DOCTOR_EMAIL` y `NEXT_PUBLIC_DOCTOR_PHONE`, los mismos datos del doctor que usa la aplicación. El panel principal solo muestra un aviso cuando quedan siete días o menos, o cuando la licencia entra en modo solo lectura.
+
 ## Activación inicial
 
 Después de aplicar `supabase/migrations/20261025000000_test_licenses.sql`, habilitar una cuenta existente del propietario desde una sesión administrativa de Supabase:
