@@ -1,4 +1,4 @@
-import { doctorApiError, logSupabaseFailure, requireDoctor } from "@/lib/supabase/doctor-auth";
+import { doctorApiError, logSupabaseFailure, requireActiveDoctor, requireDoctor } from "@/lib/supabase/doctor-auth";
 import { parsePatientInput } from "@/lib/patients";
 
 export async function GET() {
@@ -35,7 +35,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireDoctor();
+  const auth = await requireActiveDoctor();
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => null) as {

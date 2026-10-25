@@ -8,9 +8,9 @@ import { DoctorWorkspace } from "@/app/doctor/_components/doctor-tabs";
 import { Patient, PatientList } from "@/app/doctor/_components/patient-directory";
 import { downloadExcelFile, type ExcelColumn } from "@/lib/excel-export";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { isLicenseReadOnly, type TestLicense } from "@/lib/license";
 
 type Evaluation = { id: string; patient_id: string | null; nombre: string; apellido: string; edad: string; sexo: string; estado_civil: string; ocupacion: string; estudios: string; convivientes: string; rankings: Record<string, number>; result: Record<string, unknown>; started_at: string; finished_at: string; total_execution_seconds: number; first_response_times: number[]; average_response_seconds: number; created_at: string };
-type License = { status: "active" | "suspended" | "missing"; valid_until: string | null };
 type ApiError = { error?: string; code?: string };
 async function readJson<T>(response: Response) { return response.json().catch(() => null) as Promise<T | null>; }
 
@@ -43,7 +43,7 @@ export default function DoctorDashboard() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
-  const [license, setLicense] = useState<License | null>(null);
+  const [license, setLicense] = useState<TestLicense | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,7 +59,7 @@ export default function DoctorDashboard() {
       const [patientData, evaluationData] = await Promise.all([readJson<Patient[] | ApiError>(patientsResponse), readJson<Evaluation[] | ApiError>(evaluationsResponse)]);
       if (!patientsResponse.ok || !Array.isArray(patientData) || !evaluationsResponse.ok || !Array.isArray(evaluationData)) throw new Error("No se pudieron leer los datos clínicos.");
       setPatients(patientData); setEvaluations(evaluationData);
-      if (licenseResponse.ok) setLicense(await readJson<License>(licenseResponse));
+      if (licenseResponse.ok) setLicense(await readJson<TestLicense>(licenseResponse));
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : "No se pudo conectar con el servidor."); } finally { setLoading(false); }
   }, [router]);
 
@@ -69,7 +69,7 @@ export default function DoctorDashboard() {
   return <div className="min-h-screen bg-surface"><ClinicalHeader compact right={<button onClick={logout} className="button-quiet">Cerrar sesión</button>} /><DoctorWorkspace><main className="mx-auto w-full min-w-0 max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
     <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><p className="eyebrow">Área profesional</p><h1 className="mt-2 text-3xl font-semibold sm:text-4xl">Panel clínico</h1><p className="mt-2 text-sm text-on-surface-variant">Resumen de pacientes y evaluaciones.</p></div>{!loading && <div className="flex flex-wrap gap-5"><Stat label="Pacientes" value={patients.length} /><Stat label="Evaluaciones" value={evaluations.length} /></div>}</header>
     {error && <StatusAlert>{error} <button type="button" onClick={loadData} className="ml-1 font-bold underline">Reintentar</button></StatusAlert>}
-    {license && <StatusAlert tone={license.status === "active" && (!license.valid_until || license.valid_until >= new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())) ? "info" : "error"}>Licencia: {license.status === "suspended" ? "suspendida" : license.status === "missing" ? "sin activar" : license.valid_until ? `vigente hasta el ${license.valid_until} (Perú)` : "activa sin fecha de vencimiento"}. {license.status !== "active" || (license.valid_until && license.valid_until < new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())) ? "Contacta al propietario para renovarla." : ""}</StatusAlert>}
+    {license && <StatusAlert tone={isLicenseReadOnly(license) ? "info" : "success"}>{isLicenseReadOnly(license) ? "Licencia en modo solo lectura. Puedes consultar informes y exportar el historial; contacta al propietario para renovarla." : `Licencia activa${license.valid_until ? ` hasta el ${license.valid_until} (Perú)` : " sin vencimiento"}.`}</StatusAlert>}
     <section className="clinical-card overflow-hidden" aria-labelledby="recent-patients-title"><div className="flex flex-col gap-3 border-b border-outline-variant/25 px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6"><div><p className="eyebrow">Seguimiento</p><h2 id="recent-patients-title" className="mt-1 text-xl font-bold">Pacientes recientes</h2><p className="mt-1 text-sm text-on-surface-variant">Accede rápidamente a las últimas fichas actualizadas.</p></div><Link href="/doctor/patients" className="button-secondary">Ver todos los pacientes</Link></div><PatientList patients={patients} loading={loading} preview /></section>
     <div className="flex justify-end"><button disabled={!evaluations.length} onClick={() => { void downloadExcel(evaluations).catch(() => setError("No se pudo exportar el historial en Excel.")); }} className="button-secondary">Exportar historial completo</button></div>
   </main></DoctorWorkspace></div>;

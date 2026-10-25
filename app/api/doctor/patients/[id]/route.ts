@@ -1,4 +1,4 @@
-import { doctorApiError, logSupabaseFailure, requireDoctor } from "@/lib/supabase/doctor-auth";
+import { doctorApiError, logSupabaseFailure, requireActiveDoctor, requireDoctor } from "@/lib/supabase/doctor-auth";
 import { parsePatientInput } from "@/lib/patients";
 
 export async function GET(_request: Request, { params }: RouteContext<"/api/doctor/patients/[id]">) {
@@ -27,7 +27,7 @@ export async function GET(_request: Request, { params }: RouteContext<"/api/doct
 }
 
 export async function PATCH(request: Request, { params }: RouteContext<"/api/doctor/patients/[id]">) {
-  const auth = await requireDoctor();
+  const auth = await requireActiveDoctor();
   if (!auth.ok) return auth.response;
   const { id } = await params;
   const body = await request.json().catch(() => null) as {

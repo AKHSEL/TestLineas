@@ -1,4 +1,4 @@
-import { doctorApiError, logSupabaseFailure, requireDoctor } from "@/lib/supabase/doctor-auth";
+import { doctorApiError, logSupabaseFailure, requireActiveDoctor } from "@/lib/supabase/doctor-auth";
 import { calculateResult } from "@/lib/scoring";
 import { MAX_SCAN_BYTES, validateScanRankings } from "@/lib/test-scanner";
 
@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request, { params }: RouteContext<"/api/doctor/patients/[id]/scan/confirm">) {
-  const auth = await requireDoctor();
+  const auth = await requireActiveDoctor();
   if (!auth.ok) return auth.response;
   const { id } = await params;
   const { data: patient, error: patientError } = await auth.supabase

@@ -8,6 +8,7 @@ import { DoctorWorkspace } from "@/app/doctor/_components/doctor-tabs";
 import { ScanTestModal } from "@/app/doctor/_components/scan-test-modal";
 import { downloadExcelFile, type ExcelColumn } from "@/lib/excel-export";
 import { DOCUMENT_TYPE_LABELS, DocumentType, maskDocument } from "@/lib/patients";
+import { isLicenseReadOnly, type TestLicense } from "@/lib/license";
 
 const RANKING_CODES = ["A1Z", "A2Z", "A3Z", "A4Z", "A5Z", "A6Z", "A7Z", "A8Z", "A9Z"] as const;
 
@@ -110,6 +111,7 @@ export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [patient, setPatient] = useState<PatientDetail | null>(null);
+  const [license, setLicense] = useState<TestLicense | null>(null);
   const [generatedLink, setGeneratedLink] = useState<GeneratedLink | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingLink, setCreatingLink] = useState(false);
@@ -127,14 +129,17 @@ export default function PatientDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/doctor/patients/${id}`);
+      const [response, licenseResponse] = await Promise.all([fetch(`/api/doctor/patients/${id}`), fetch("/api/doctor/license", { cache: "no-store" })]);
       const data = await response.json().catch(() => null) as (PatientDetail & ApiError) | null;
-      if (response.status === 401 || data?.code === "UNAUTHORIZED") {
+      if (response.status === 401 || licenseResponse.status === 401 || data?.code === "UNAUTHORIZED") {
         router.replace("/doctor?reason=session_expired");
         return;
       }
       if (!response.ok || !data?.id) throw new Error(data?.error || "No se pudo cargar la ficha.");
       setPatient(data);
+      const currentLicense = licenseResponse.ok ? await licenseResponse.json() as TestLicense : null;
+      setLicense(currentLicense);
+      if (isLicenseReadOnly(currentLicense)) setEditing(false);
       setEditNombre(data.nombre);
       setEditApellido(data.apellido);
       setEditDocumentType(data.document_type ?? "dni");
@@ -154,6 +159,7 @@ export default function PatientDetailPage() {
   );
   const latest = evaluations[0];
   const previous = evaluations[1];
+  const readOnly = isLicenseReadOnly(license);
 
   async function saveIdentity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -222,12 +228,13 @@ export default function PatientDetailPage() {
       <main className="mx-auto w-full min-w-0 max-w-7xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div><p className="eyebrow">Ficha longitudinal</p><h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">{patient.nombre} {patient.apellido}</h1><p className="mt-2 text-sm text-on-surface-variant">{patient.document_type ? `${DOCUMENT_TYPE_LABELS[patient.document_type]} ${maskDocument(patient.document_number)} · ` : "Sin documento · "}{evaluations.length} {evaluations.length === 1 ? "evaluación registrada" : "evaluaciones registradas"}</p></div>
-          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setEditing((current) => !current)} className="button-secondary">{editing ? "Cancelar edición" : "Editar datos"}</button><button onClick={() => { void exportPatient(patient).catch(() => setError("No se pudo exportar la evolución en Excel.")); }} disabled={!evaluations.length} className="button-secondary">Exportar evolución</button><ScanTestModal patientId={id} onSaved={loadPatient} /><button onClick={createLink} disabled={creatingLink} className="button-primary">{creatingLink ? "Generando…" : "Nueva evaluación"}</button></div>
+          <div className="flex flex-wrap gap-2">{!readOnly && <button type="button" onClick={() => setEditing((current) => !current)} className="button-secondary">{editing ? "Cancelar edición" : "Editar datos"}</button>}<button onClick={() => { void exportPatient(patient).catch(() => setError("No se pudo exportar la evolución en Excel.")); }} disabled={!evaluations.length} className="button-secondary">Exportar evolución</button>{!readOnly && <><ScanTestModal patientId={id} onSaved={loadPatient} /><button onClick={createLink} disabled={creatingLink} className="button-primary">{creatingLink ? "Generando…" : "Nueva evaluación"}</button></>}</div>
         </header>
 
+        {readOnly && <StatusAlert tone="info">Modo solo lectura: puedes ver los informes y exportar la evolución de este paciente.</StatusAlert>}
         {error && <StatusAlert>{error}{duplicatePatientId && <> <Link href={`/doctor/patients/${duplicatePatientId}`} className="font-bold underline">Abrir la ficha existente</Link></>}</StatusAlert>}
 
-        {editing && (
+        {editing && !readOnly && (
           <section className="clinical-card overflow-hidden" aria-labelledby="identity-title">
             <div className="border-b border-outline-variant/25 px-5 py-5 sm:px-6"><p className="eyebrow">Identificación</p><h2 id="identity-title" className="mt-1 text-xl font-bold">Editar datos del paciente</h2><p className="mt-1 text-sm text-on-surface-variant">El documento evita crear fichas duplicadas. Puedes dejarlo vacío en registros antiguos.</p></div>
             <form onSubmit={saveIdentity} className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-[1fr_1fr_190px_1fr_auto] lg:items-end">

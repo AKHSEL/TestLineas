@@ -17,13 +17,13 @@ No agregar ese permiso desde el cliente web. La migración conserva activas, sin
 ## Comportamiento
 
 - `valid_until` es el último día de uso, en horario de Perú. En blanco significa sin vencimiento.
-- Una licencia suspendida, vencida o ausente impide crear enlaces y guardar nuevas evaluaciones. Los enlaces disponibles dejan de abrir el test.
-- Los pacientes, evaluaciones e informes anteriores permanecen disponibles para consulta.
+- Una licencia suspendida, vencida o ausente activa el modo solo lectura: impide crear enlaces, registrar o editar pacientes, importar escaneos y crear o modificar evaluaciones. Los enlaces disponibles dejan de abrir el test.
+- Los pacientes, evaluaciones e informes anteriores permanecen disponibles para consulta. La exportación de historiales e informes continúa habilitada.
 - Los cambios de estado y fecha quedan registrados en `license_events`.
 - El vencimiento de cada enlace (24 horas) sigue siendo independiente de la licencia.
 
-La validación de escritura se realiza mediante triggers en la base de datos. Ocultar los controles en la interfaz no sustituye esa validación.
+La validación de escritura se realiza mediante triggers y políticas de almacenamiento en la base de datos. Los controles de edición también desaparecen de la interfaz al vencer la licencia.
 
 ## Reversión
 
-Si hay que desactivar temporalmente el bloqueo sin borrar licencias ni historial, deshabilitar los triggers `license_required_for_links` y `license_required_for_evaluations` y restaurar la definición anterior de `get_evaluation_session` de la migración previa. Volver a habilitarlos después de resolver el incidente. No borrar las tablas para una reversión operativa.
+Si hay que desactivar temporalmente el bloqueo sin borrar licencias ni historial, deshabilitar los triggers `license_required_for_links`, `license_required_for_evaluations`, `license_required_for_patient_writes`, `license_required_for_link_updates` y `license_required_for_evaluation_updates`; retirar las dos políticas restrictivas de `storage.objects`; y restaurar la definición anterior de `get_evaluation_session` de la migración previa. Volver a habilitar las protecciones después de resolver el incidente. No borrar las tablas para una reversión operativa.

@@ -1,7 +1,7 @@
-import { doctorApiError, logSupabaseFailure, requireDoctor } from "@/lib/supabase/doctor-auth";
+import { doctorApiError, logSupabaseFailure, requireActiveDoctor } from "@/lib/supabase/doctor-auth";
 
 export async function POST(_request: Request, { params }: RouteContext<"/api/doctor/patients/[id]/links">) {
-  const auth = await requireDoctor();
+  const auth = await requireActiveDoctor();
   if (!auth.ok) return auth.response;
   const { id } = await params;
 

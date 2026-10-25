@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isLicenseReadOnly, type TestLicense } from "@/lib/license";
 
 type SupabaseFailure = {
   name?: string;
@@ -14,6 +15,7 @@ export type DoctorApiErrorCode =
   | "READ_FAILED"
   | "WRITE_FAILED"
   | "DUPLICATE_PATIENT"
+  | "LICENSE_READ_ONLY"
   | "NOT_FOUND";
 
 export function logSupabaseFailure(scope: string, error: SupabaseFailure) {
@@ -67,4 +69,20 @@ export async function requireDoctor() {
   }
 
   return { ok: true as const, supabase, user };
+}
+
+export async function requireActiveDoctor() {
+  const auth = await requireDoctor();
+  if (!auth.ok) return auth;
+  const { data, error } = await auth.supabase.from("test_licenses")
+    .select("status, valid_until").eq("user_id", auth.user.id).maybeSingle();
+  if (error) return {
+    ok: false as const,
+    response: doctorApiError("No se pudo validar la licencia.", "AUTH_UNAVAILABLE", 503),
+  };
+  if (isLicenseReadOnly(data as TestLicense | null)) return {
+    ok: false as const,
+    response: doctorApiError("La licencia está en modo solo lectura. Puedes ver y exportar los informes existentes.", "LICENSE_READ_ONLY", 403),
+  };
+  return auth;
 }
