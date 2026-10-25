@@ -40,6 +40,8 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
+    if (error.message.includes("LICENSE_INACTIVE"))
+      return doctorApiError("La licencia está vencida o suspendida. Contacta al propietario.", "WRITE_FAILED", 403);
     logSupabaseFailure("evaluation-links:create", error);
     return doctorApiError("No se pudo generar el enlace.", "WRITE_FAILED", 500);
   }

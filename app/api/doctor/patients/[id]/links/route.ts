@@ -21,6 +21,8 @@ export async function POST(_request: Request, { params }: RouteContext<"/api/doc
     .select("token, expires_at")
     .single();
   if (error) {
+    if (error.message.includes("LICENSE_INACTIVE"))
+      return doctorApiError("La licencia está vencida o suspendida. Contacta al propietario.", "WRITE_FAILED", 403);
     logSupabaseFailure("patient-links:create", error);
     return doctorApiError("No se pudo generar el enlace.", "WRITE_FAILED", 500);
   }
