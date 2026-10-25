@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ClinicalHeader, StatusAlert } from "@/app/components/clinical-ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
-type License = { user_id: string; email: string; status: "active" | "suspended" | null; valid_until: string | null; updated_at: string | null };
+type License = { user_id: string; email: string; status: "active" | "suspended" | null; valid_until: string | null; updated_at: string | null; clear_expiry?: boolean };
 
 export default function OwnerPage() {
   const [email, setEmail] = useState("");
@@ -50,11 +50,19 @@ export default function OwnerPage() {
     setSaving(license.user_id); setError(null);
     const response = await fetch("/api/owner/licenses", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: license.user_id, status: license.status, validUntil: license.valid_until }),
+      body: JSON.stringify({ userId: license.user_id, status: license.status, validUntil: license.valid_until, removeExpiry: license.clear_expiry === true }),
     });
-    if (!response.ok) setError("No se pudo guardar el cambio. Intenta nuevamente.");
+    if (!response.ok) {
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+      setError(data?.error ?? "No se pudo guardar el cambio. Intenta nuevamente.");
+    }
     else await refresh();
     setSaving(null);
+  }
+
+  function clearExpiry(license: License) {
+    if (!window.confirm(`¿Quitar el vencimiento de ${license.email}? La licencia quedará sin fecha de fin cuando guardes.`)) return;
+    setLicenses(rows => rows.map(row => row.user_id === license.user_id ? { ...row, valid_until: null, clear_expiry: true } : row));
   }
 
   async function logout() {
@@ -80,7 +88,7 @@ export default function OwnerPage() {
           {licenses.map(license => <div className="clinical-card grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_170px_190px_auto] md:items-end" key={license.user_id}>
             <div><p className="font-semibold break-all">{license.email}</p><p className="mt-1 text-xs text-on-surface-variant">{license.status === null ? "Sin licencia" : license.status === "suspended" ? "Suspendida" : license.valid_until && license.valid_until < new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()) ? "Vencida" : "Activa"}</p></div>
             <div><label className="clinical-label" htmlFor={`status-${license.user_id}`}>Estado</label><select id={`status-${license.user_id}`} className="clinical-input" value={license.status ?? "active"} onChange={e => setLicenses(rows => rows.map(row => row.user_id === license.user_id ? { ...row, status: e.target.value as License["status"] } : row))}><option value="active">Activa</option><option value="suspended">Suspendida</option></select></div>
-            <div><label className="clinical-label" htmlFor={`date-${license.user_id}`}>Último día de uso</label><input id={`date-${license.user_id}`} className="clinical-input" type="date" value={license.valid_until ?? ""} onChange={e => setLicenses(rows => rows.map(row => row.user_id === license.user_id ? { ...row, valid_until: e.target.value || null } : row))} /><p className="mt-1 text-xs text-on-surface-variant">Vacío = sin vencimiento</p></div>
+            <div><label className="clinical-label" htmlFor={`date-${license.user_id}`}>Último día de uso</label><input id={`date-${license.user_id}`} className="clinical-input" type="date" value={license.valid_until ?? ""} onChange={e => { if (e.target.value) setLicenses(rows => rows.map(row => row.user_id === license.user_id ? { ...row, valid_until: e.target.value, clear_expiry: false } : row)); }} />{license.valid_until ? <button type="button" onClick={() => clearExpiry(license)} className="mt-1 text-xs font-semibold text-primary underline">Quitar vencimiento</button> : <p className="mt-1 text-xs text-on-surface-variant">Sin fecha de vencimiento</p>}</div>
             <button type="button" className="button-primary" disabled={saving !== null} onClick={() => void save(license)}>{saving === license.user_id ? "Guardando…" : "Guardar"}</button>
           </div>)}
           {licenses.length === 0 && <p>No hay cuentas de clientes todavía.</p>}
